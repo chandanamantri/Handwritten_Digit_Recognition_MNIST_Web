@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MNIST Handwritten Digit Recognition</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<div class="container">
+<header>
+<div class="badge">MACHINE LEARNING PROJECT</div>
+<h1>Handwritten Digit Recognition</h1>
+<p>Draw one digit clearly and let the MNIST-trained model predict it.</p>
+</header>
+
+<main class="grid">
+<section class="card">
+<h2>Draw a Digit</h2>
+<canvas id="canvas" width="280" height="280"></canvas>
+<div class="buttons">
+<button id="clearBtn" class="secondary">Clear</button>
+<button id="predictBtn" class="primary">Predict Digit</button>
+</div>
+<p class="hint">Use a single large digit from 0 to 9.</p>
+</section>
+
+<section class="card result-card">
+<h2>Prediction</h2>
+<div id="result" class="result">?</div>
+<div id="confidence" class="confidence">Waiting for a digit...</div>
+<div id="alternatives" class="alternatives"></div>
+<hr>
+<h3>Or Upload an Image</h3>
+<input id="fileInput" type="file" accept="image/*">
+<button id="uploadBtn" class="primary full">Predict Uploaded Image</button>
+</section>
+</main>
+
+<section class="flow">
+<h2>Process Flow</h2>
+<div class="flow-grid">
+<div>Canvas</div><span>→</span>
+<div>MNIST Preprocessing</div><span>→</span>
+<div>ML Model</div><span>→</span>
+<div>Prediction</div>
+</div>
+</section>
+
+<footer>Python 3.14 • Flask • NumPy • Pillow • Scikit-learn • MNIST</footer>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resetCanvas() {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+resetCanvas();
+
+ctx.lineWidth = 18;
+ctx.lineCap = "round";
+ctx.lineJoin = "round";
+ctx.strokeStyle = "#000000";
+
+let drawing = false;
+
+function point(e) {
+    const rect = canvas.getBoundingClientRect();
+    const source = e.touches ? e.touches[0] : e;
+    return {
+        x: (source.clientX - rect.left) * canvas.width / rect.width,
+        y: (source.clientY - rect.top) * canvas.height / rect.height
+    };
+}
+
+function start(e) {
+    drawing = true;
+    const p = point(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    e.preventDefault();
+}
+
+function draw(e) {
+    if (!drawing) return;
+    const p = point(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    e.preventDefault();
+}
+
+function stop() {
+    drawing = false;
+    ctx.closePath();
+}
+
+canvas.addEventListener("mousedown", start);
+canvas.addEventListener("mousemove", draw);
+canvas.addEventListener("mouseup", stop);
+canvas.addEventListener("mouseleave", stop);
+canvas.addEventListener("touchstart", start, {passive:false});
+canvas.addEventListener("touchmove", draw, {passive:false});
+canvas.addEventListener("touchend", stop);
+
+function clearResult() {
+    document.getElementById("result").textContent = "?";
+    document.getElementById("confidence").textContent = "Waiting for a digit...";
+    document.getElementById("alternatives").innerHTML = "";
+}
+
+document.getElementById("clearBtn").onclick = () => {
+    resetCanvas();
+    clearResult();
+};
+
+async function predictImage(blob) {
+    const form = new FormData();
+    form.append("image", blob, "digit.png");
+
+    document.getElementById("result").textContent = "...";
+    document.getElementById("confidence").textContent = "Analyzing...";
+    document.getElementById("alternatives").innerHTML = "";
+
+    try {
+        const response = await fetch("/predict", { method: "POST", body: form });
+        const data = await response.json();
+        if (!data.success) throw new Error(data.error);
+
+        document.getElementById("result").textContent = data.prediction;
+        document.getElementById("confidence").textContent =
+            `Confidence: ${data.confidence}%`;
+
+        document.getElementById("alternatives").innerHTML =
+            "<h3>Top Predictions</h3>" +
+            data.alternatives.map(x =>
+                `<div class="alt"><span>Digit ${x.digit}</span><b>${x.confidence}%</b></div>`
+            ).join("");
+    } catch (err) {
+        document.getElementById("result").textContent = "!";
+        document.getElementById("confidence").textContent = err.message;
+    }
+}
+
+document.getElementById("predictBtn").onclick = () => {
+    canvas.toBlob(blob => predictImage(blob), "image/png");
+};
+
+document.getElementById("uploadBtn").onclick = () => {
+    const file = document.getElementById("fileInput").files[0];
+    if (!file) {
+        document.getElementById("confidence").textContent = "Please select an image first.";
+        return;
+    }
+    predictImage(file);
+};
+</script>
+</body>
+</html>
